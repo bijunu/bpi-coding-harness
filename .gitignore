@@ -1,5 +1,6 @@
-# Pi local state
-.pi/
+# Pi local state — ignore everything except tracked config
+.pi/*
+!.pi/settings.json
 
 # Trace data — exclude by default, opt-in specific samples
 traces/*
