@@ -47,6 +47,10 @@ interface PendingResponse {
 export default function (pi: ExtensionAPI): void {
     let seq = 0;
     let pending: PendingResponse | undefined;
+    // Track session IDs we've already announced so the per-session log
+    // line fires once per session (not once per turn). Sessions can change
+    // within a single process via /new, /resume, /fork, /clone.
+    const announcedSessions = new Set<string>();
 
     // Visible on stderr at extension load. Goes to stderr (not stdout) so
     // it does not pollute --mode json output. Printed once per process.
@@ -83,11 +87,23 @@ export default function (pi: ExtensionAPI): void {
         seq += 1;
         pending = { seq, startedAt: Date.now() };
 
+        const sessionId = ctx.sessionManager.getSessionId();
+        const modelLabel = ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : "unknown";
+
+        // One line per distinct session, on its first provider request.
+        // Helps correlate this trace with the matching session.jsonl when
+        // multiple runs share the same wire-trace.jsonl file.
+        const sessionKey = sessionId ?? "<no-session>";
+        if (!announcedSessions.has(sessionKey)) {
+            announcedSessions.add(sessionKey);
+            console.error(`[wire-trace] session ${sessionKey} turn 1 → ${modelLabel}`);
+        }
+
         append({
             ts: new Date().toISOString(),
             type: "request",
             seq,
-            sessionId: ctx.sessionManager.getSessionId(),
+            sessionId,
             cwd: ctx.cwd,
             model: ctx.model
                 ? { provider: ctx.model.provider, id: ctx.model.id, api: ctx.model.api }
