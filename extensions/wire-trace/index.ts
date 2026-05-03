@@ -24,7 +24,7 @@
 import { appendFileSync, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 
 const LOG_PATH = process.env.PI_WIRE_TRACE_PATH ?? join(homedir(), ".pi", "agent", "wire-trace.jsonl");
 
@@ -36,6 +36,23 @@ function append(record: Record<string, unknown>): void {
     } catch {
         // Never throw from a hook; tracing must not break the agent loop.
     }
+}
+
+/** Snapshot of the per-call data we read off ExtensionContext. */
+interface CtxSnapshot {
+    sessionId: string | undefined;
+    cwd: string;
+    model: { provider: string; id: string; api: string } | undefined;
+}
+
+function snapshot(ctx: ExtensionContext): CtxSnapshot {
+    return {
+        sessionId: ctx.sessionManager.getSessionId(),
+        cwd: ctx.cwd,
+        model: ctx.model
+            ? { provider: ctx.model.provider, id: ctx.model.id, api: ctx.model.api }
+            : undefined,
+    };
 }
 
 interface PendingResponse {
@@ -56,46 +73,39 @@ export default function (pi: ExtensionAPI): void {
     // it does not pollute --mode json output. Printed once per process.
     console.error(`[wire-trace] enabled, logging to ${LOG_PATH}`);
 
-    const flush = (body: unknown, ctx: { sessionId: string | undefined; cwd: string; model: unknown }): void => {
+    const flush = (body: unknown, snap: CtxSnapshot): void => {
         if (!pending) return;
-        const record = {
+        append({
             ts: new Date().toISOString(),
             type: "response",
             seq: pending.seq,
-            sessionId: ctx.sessionId,
-            cwd: ctx.cwd,
-            model: ctx.model,
+            sessionId: snap.sessionId,
+            cwd: snap.cwd,
+            model: snap.model,
             durationMs: Date.now() - pending.startedAt,
             ...(pending.base ?? { status: undefined, headers: undefined }),
             body,
-        };
-        append(record);
+        });
         pending = undefined;
     };
 
     pi.on("before_provider_request", (event, ctx) => {
+        const snap = snapshot(ctx);
+
         // If a previous response never reached message_end (e.g. abort),
         // flush whatever we had so logs stay paired.
-        if (pending) {
-            flush(undefined, {
-                sessionId: ctx.sessionManager.getSessionId(),
-                cwd: ctx.cwd,
-                model: undefined,
-            });
-        }
+        if (pending) flush(undefined, snap);
 
         seq += 1;
         pending = { seq, startedAt: Date.now() };
 
-        const sessionId = ctx.sessionManager.getSessionId();
-        const modelLabel = ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : "unknown";
-
         // One line per distinct session, on its first provider request.
         // Helps correlate this trace with the matching session.jsonl when
         // multiple runs share the same wire-trace.jsonl file.
-        const sessionKey = sessionId ?? "<no-session>";
+        const sessionKey = snap.sessionId ?? "<no-session>";
         if (!announcedSessions.has(sessionKey)) {
             announcedSessions.add(sessionKey);
+            const modelLabel = snap.model ? `${snap.model.provider}/${snap.model.id}` : "unknown";
             console.error(`[wire-trace] session ${sessionKey} turn 1 → ${modelLabel}`);
         }
 
@@ -103,11 +113,9 @@ export default function (pi: ExtensionAPI): void {
             ts: new Date().toISOString(),
             type: "request",
             seq,
-            sessionId,
-            cwd: ctx.cwd,
-            model: ctx.model
-                ? { provider: ctx.model.provider, id: ctx.model.id, api: ctx.model.api }
-                : undefined,
+            sessionId: snap.sessionId,
+            cwd: snap.cwd,
+            model: snap.model,
             payload: event.payload,
         });
         // Returning undefined => do not modify the payload.
@@ -115,23 +123,13 @@ export default function (pi: ExtensionAPI): void {
 
     pi.on("after_provider_response", (event, _ctx) => {
         if (!pending) return; // request hook didn't fire? skip
-        pending.base = {
-            status: event.status,
-            headers: event.headers,
-        };
+        pending.base = { status: event.status, headers: event.headers };
         // Do NOT write yet. Wait for message_end to fill in body.
     });
 
     pi.on("message_end", (event, ctx) => {
         if (event.message.role !== "assistant") return;
-        if (!pending) return; // not a response we're tracking
-
-        flush(event.message, {
-            sessionId: ctx.sessionManager.getSessionId(),
-            cwd: ctx.cwd,
-            model: ctx.model
-                ? { provider: ctx.model.provider, id: ctx.model.id, api: ctx.model.api }
-                : undefined,
-        });
+        if (!pending) return;
+        flush(event.message, snapshot(ctx));
     });
 }
