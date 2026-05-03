@@ -1,0 +1,27 @@
+# Pi local state
+.pi/
+
+# Trace data — exclude by default, opt-in specific samples
+traces/*
+!traces/.gitkeep
+!traces/sample/
+
+# Node
+node_modules/
+*.log
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Editor
+.vscode/
+.idea/
+.DS_Store
+
+# Secrets (paranoia)
+.env
+*.key
+secrets.*
