@@ -48,6 +48,10 @@ export default function (pi: ExtensionAPI): void {
     let seq = 0;
     let pending: PendingResponse | undefined;
 
+    // Visible on stderr at extension load. Goes to stderr (not stdout) so
+    // it does not pollute --mode json output. Printed once per process.
+    console.error(`[wire-trace] enabled, logging to ${LOG_PATH}`);
+
     const flush = (body: unknown, ctx: { sessionId: string | undefined; cwd: string; model: unknown }): void => {
         if (!pending) return;
         const record = {
