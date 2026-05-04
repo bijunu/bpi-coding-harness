@@ -213,28 +213,47 @@
     border-top: 1px solid var(--border);
   }
   .collapsible.open .collapsible-body { display: block; }
-  /* Context tax bar */
-  .context-tax-bar {
-    display: flex;
-    height: 32px;
-    border-radius: 6px;
-    overflow: hidden;
-    margin: 6px 0 8px;
-    border: 1px solid var(--border);
+  /* Context tax bars */
+  .ctx-bar-label {
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-bottom: 3px;
   }
-  .context-tax-bar .segment {
+  .ctx-bar-wrap {
+    height: 24px;
+    border-radius: 5px;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    overflow: hidden;
+    margin-bottom: 4px;
+    position: relative;
+  }
+  .ctx-bar-fill {
+    display: flex;
+    height: 100%;
+  }
+  .ctx-bar-fill .seg {
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 11px;
-    font-weight: 600;
+    font-size: 10px;
+    font-weight: 700;
     overflow: hidden;
     white-space: nowrap;
-    padding: 0 6px;
+    padding: 0 4px;
+    height: 100%;
   }
-  .ctx-system { background: #1a1a3e; color: var(--accent); }
-  .ctx-tools { background: #2d1a00; color: var(--orange); }
-  .ctx-messages { background: var(--green-bg); color: var(--green); }
+  .seg-system { background: var(--accent); color: var(--bg); }
+  .seg-tools { background: var(--orange); color: var(--bg); }
+  .seg-messages { background: var(--green); color: var(--bg); }
+  .ctx-bar-sublabel {
+    font-size: 11px;
+    color: var(--text-dim);
+    margin-bottom: 4px;
+  }
   /* Code / pre blocks */
   .code-block {
     background: var(--bg-raised);
@@ -557,27 +576,42 @@
     const msgsApprox = approxTokens(msgsText);
     const totalApprox = systemApprox + toolsApprox + msgsApprox;
 
-    html += '<div class="section">';
-    html += '<div class="section-title">Context Tax';
-    if (turn.seq === 1) {
-      html += ` <span class="badge badge-tokens">cache_write: ${fmtNum(usage.cacheWrite)} tokens</span>`;
-    }
-    html += '</div>';
+    const CONTEXT_WINDOW = 200000;
+    const sysFrac = (systemApprox / totalApprox * 100).toFixed(1);
+    const toolsFrac = (toolsApprox / totalApprox * 100).toFixed(1);
+    const msgsFrac = (msgsApprox / totalApprox * 100).toFixed(1);
+    const fillPct = (totalApprox / CONTEXT_WINDOW * 100);
+    const barWidthPct = Math.max(fillPct, 2.5).toFixed(2);
 
-    // Stacked bar
-    const sysPct = (systemApprox / totalApprox * 100).toFixed(1);
-    const toolsPct = (toolsApprox / totalApprox * 100).toFixed(1);
-    const msgsPct = (msgsApprox / totalApprox * 100).toFixed(1);
-    html += `<div class="context-tax-bar">
-      <div class="segment ctx-system" style="width:${sysPct}%">${Number(sysPct) > 8 ? `system ${sysPct}%` : ''}</div>
-      <div class="segment ctx-tools" style="width:${toolsPct}%">${Number(toolsPct) > 8 ? `tools ${toolsPct}%` : ''}</div>
-      <div class="segment ctx-messages" style="width:${msgsPct}%">${Number(msgsPct) > 8 ? `messages ${msgsPct}%` : ''}</div>
+    html += '<div class="section">';
+    html += '<div class="section-title">Context Tax</div>';
+
+    // --- Top bar: composition (full width, within-turn breakdown) ---
+    html += '<div class="ctx-bar-label">Composition</div>';
+    html += `<div class="ctx-bar-wrap">
+      <div class="ctx-bar-fill" style="width:100%">
+        <div class="seg seg-system" style="width:${sysFrac}%">${Number(sysFrac) > 10 ? `system ${sysFrac}%` : ''}</div>
+        <div class="seg seg-tools" style="width:${toolsFrac}%">${Number(toolsFrac) > 10 ? `tools ${toolsFrac}%` : ''}</div>
+        <div class="seg seg-messages" style="width:${msgsFrac}%">${Number(msgsFrac) > 10 ? `msgs ${msgsFrac}%` : ''}</div>
+      </div>
     </div>`;
-    html += `<div class="legend">
-      <div class="legend-item"><div class="legend-dot" style="background:var(--accent)"></div>system ~${fmtNum(systemApprox)} tok</div>
-      <div class="legend-item"><div class="legend-dot" style="background:var(--orange)"></div>tools ~${fmtNum(toolsApprox)} tok</div>
-      <div class="legend-item"><div class="legend-dot" style="background:var(--green)"></div>messages ~${fmtNum(msgsApprox)} tok</div>
+    html += `<div class="legend" style="margin-bottom:8px">
+      <div class="legend-item"><div class="legend-dot" style="background:var(--accent)"></div>system ~${fmtNum(systemApprox)}</div>
+      <div class="legend-item"><div class="legend-dot" style="background:var(--orange)"></div>tools ~${fmtNum(toolsApprox)}</div>
+      <div class="legend-item"><div class="legend-dot" style="background:var(--green)"></div>msgs ~${fmtNum(msgsApprox)}</div>
     </div>`;
+
+    // --- Bottom bar: context window usage (absolute scale) ---
+    html += '<div class="ctx-bar-label">Context window</div>';
+    html += `<div class="ctx-bar-wrap">
+      <div class="ctx-bar-fill" style="width:${barWidthPct}%">
+        <div class="seg seg-system" style="width:${sysFrac}%"></div>
+        <div class="seg seg-tools" style="width:${toolsFrac}%"></div>
+        <div class="seg seg-messages" style="width:${msgsFrac}%"></div>
+      </div>
+    </div>`;
+    html += `<div class="ctx-bar-sublabel">${fmtNum(totalApprox)} / ${fmtNum(CONTEXT_WINDOW)} tokens &middot; ${fillPct.toFixed(1)}% used</div>`;
+
     html += '</div>';
 
     // ====== REQUEST: SYSTEM PROMPT ======
