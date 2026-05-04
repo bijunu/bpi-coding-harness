@@ -89,7 +89,7 @@
   /* Main layout */
   #main {
     display: flex;
-    height: calc(100vh - 65px);
+    height: calc(100vh - 100px);
   }
   /* Left pane */
   #left {
@@ -420,9 +420,56 @@
     margin-top: 100px;
     font-size: 14px;
   }
+  /* Trace switcher */
+  #trace-switcher {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 20px;
+    background: var(--bg-surface);
+    border-bottom: 1px solid var(--border);
+    font-size: 12px;
+  }
+  #trace-switcher label {
+    color: var(--text-dim);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  #trace-switcher select {
+    background: var(--bg-raised);
+    color: var(--text-bright);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 3px 8px;
+    font-family: inherit;
+    font-size: 12px;
+    cursor: pointer;
+  }
+  #trace-switcher select:hover { border-color: var(--accent); }
+  /* Skill badge */
+  .badge-skill {
+    background: var(--orange-bg);
+    color: var(--orange);
+    font-size: 10px;
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-weight: 700;
+    margin-left: 4px;
+  }
+  .skill-note {
+    font-size: 11px;
+    color: var(--orange);
+    padding: 5px 10px;
+    background: var(--orange-bg);
+    border: 1px solid #3d2e00;
+    border-radius: 5px;
+    margin-bottom: 10px;
+  }
 </style>
 </head>
 <body>
+<div id="trace-switcher"></div>
 <div id="stepper"></div>
 <div id="main">
   <div id="left"></div>
@@ -431,27 +478,82 @@
 
 <script>
 (async function() {
-  // --- Load data ---
-  const [wireText, sessionText] = await Promise.all([
-    fetch('../traces/demo-v1/wire.jsonl').then(r => r.text()),
-    fetch('../traces/demo-v1/session.jsonl').then(r => r.text()),
-  ]);
+  const TRACES = ["demo-v1", "skill-use", "skill-build", "smoke-test", "dedup-check"];
 
-  const wireRecords = wireText.trim().split('\n').map(l => JSON.parse(l));
-
-  // Group into turns: each turn = {seq, request, response}
-  const turns = [];
-  const bySeq = {};
-  for (const rec of wireRecords) {
-    const seq = rec.seq;
-    if (!bySeq[seq]) bySeq[seq] = {};
-    bySeq[seq][rec.type] = rec;
-  }
-  for (const seq of Object.keys(bySeq).map(Number).sort((a, b) => a - b)) {
-    turns.push({ seq, request: bySeq[seq].request, response: bySeq[seq].response });
-  }
-
+  let turns = [];
   let selectedTurn = 0;
+  let currentTrace = '';
+  // skill detected per turn index: null or skill name string
+  let turnSkills = [];
+
+  // --- Trace switcher ---
+  function renderSwitcher() {
+    const el = document.getElementById('trace-switcher');
+    let opts = TRACES.map(t => `<option value="${t}"${t === currentTrace ? ' selected' : ''}>${t}</option>`).join('');
+    el.innerHTML = `<label>Trace:</label><select id="trace-select" onchange="switchTrace(this.value)">${opts}</select>`;
+  }
+
+  window.switchTrace = async function(name) {
+    window.location.hash = 'trace=' + name;
+    await loadTrace(name);
+  };
+
+  async function loadTrace(name) {
+    currentTrace = name;
+    selectedTurn = 0;
+    turns = [];
+    turnSkills = [];
+
+    const [wireText] = await Promise.all([
+      fetch('../traces/' + name + '/wire.jsonl').then(r => r.text()),
+    ]);
+
+    const wireRecords = wireText.trim().split('\n').map(l => JSON.parse(l));
+
+    const bySeq = {};
+    for (const rec of wireRecords) {
+      const seq = rec.seq;
+      if (!bySeq[seq]) bySeq[seq] = {};
+      bySeq[seq][rec.type] = rec;
+    }
+    for (const seq of Object.keys(bySeq).map(Number).sort((a, b) => a - b)) {
+      turns.push({ seq, request: bySeq[seq].request, response: bySeq[seq].response });
+    }
+
+    // Detect skills per turn
+    detectSkills();
+
+    renderSwitcher();
+    renderStepper();
+    renderLeft();
+    renderRight();
+  }
+
+  function detectSkills() {
+    turnSkills = turns.map(turn => {
+      const content = turn.response.body.content || [];
+      for (const block of content) {
+        if (block.type === 'toolCall' && block.name === 'read') {
+          const path = block.arguments?.path || '';
+          const m = path.match(/\/skills\/([^/]+)\/SKILL\.md$/);
+          if (m) return m[1];
+        }
+      }
+      return null;
+    });
+  }
+
+  // --- Read hash ---
+  function traceFromHash() {
+    const h = window.location.hash.replace('#', '');
+    const m = h.match(/trace=([^&]+)/);
+    return m ? m[1] : null;
+  }
+
+  window.addEventListener('hashchange', () => {
+    const t = traceFromHash();
+    if (t && t !== currentTrace && TRACES.includes(t)) loadTrace(t);
+  });
 
   // --- Helpers ---
   function approxTokens(text) {
@@ -536,7 +638,9 @@
         </div>
         <div style="margin-bottom:4px">
           <span class="badge ${sr === 'stop' ? 'badge-stop' : 'badge-tool-use'}">${sr}</span>
-          <span class="badge badge-duration">${turn.response.durationMs}ms</span>
+          <span class="badge badge-duration">${turn.response.durationMs}ms</span>${
+            turnSkills[i] ? `<span class="badge-skill">SKILL: ${escHtml(turnSkills[i])}</span>` : ''
+          }
         </div>
         <div class="token-row">
           <span>in:${fmtNum(u.input)}</span>
@@ -563,6 +667,11 @@
     const usage = resp.usage;
 
     let html = '';
+
+    // Skill note
+    if (turnSkills[selectedTurn]) {
+      html += `<div class="skill-note">This turn loaded the <strong>${escHtml(turnSkills[selectedTurn])}</strong> skill.</div>`;
+    }
 
     // ====== CONTEXT TAX BAR (always show, but emphasize on turn 1) ======
     const systemText = req.system.map(s => s.text).join('\n');
@@ -770,9 +879,8 @@
   };
 
   // --- Init ---
-  renderStepper();
-  renderLeft();
-  renderRight();
+  const initTrace = traceFromHash() || TRACES[0];
+  await loadTrace(initTrace);
 })();
 </script>
 </body>
