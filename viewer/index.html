@@ -152,11 +152,11 @@
   #right {
     flex: 1;
     overflow-y: auto;
-    padding: 20px 24px;
+    padding: 14px 20px;
     background: var(--bg);
   }
   .section {
-    margin-bottom: 24px;
+    margin-bottom: 14px;
   }
   .section-title {
     font-size: 12px;
@@ -164,7 +164,7 @@
     text-transform: uppercase;
     letter-spacing: 0.08em;
     color: var(--text-dim);
-    margin-bottom: 10px;
+    margin-bottom: 6px;
     display: flex;
     align-items: center;
     gap: 8px;
@@ -188,11 +188,11 @@
     background: var(--bg-surface);
     border: 1px solid var(--border);
     border-radius: 6px;
-    margin-bottom: 8px;
+    margin-bottom: 5px;
     overflow: hidden;
   }
   .collapsible-header {
-    padding: 8px 12px;
+    padding: 6px 10px;
     cursor: pointer;
     display: flex;
     align-items: center;
@@ -209,7 +209,7 @@
   .collapsible.open .arrow { transform: rotate(90deg); }
   .collapsible-body {
     display: none;
-    padding: 8px 12px;
+    padding: 6px 10px;
     border-top: 1px solid var(--border);
   }
   .collapsible.open .collapsible-body { display: block; }
@@ -219,7 +219,7 @@
     height: 32px;
     border-radius: 6px;
     overflow: hidden;
-    margin: 8px 0 12px;
+    margin: 6px 0 8px;
     border: 1px solid var(--border);
   }
   .context-tax-bar .segment {
@@ -278,8 +278,8 @@
   .show-more-btn:hover { background: var(--bg-hover); }
   /* Message blocks */
   .msg-block {
-    margin-bottom: 10px;
-    padding: 10px 12px;
+    margin-bottom: 6px;
+    padding: 7px 10px;
     border-radius: 6px;
     border: 1px solid var(--border);
   }
@@ -617,8 +617,8 @@
     );
 
     // Messages
-    html += '<div style="margin-top:12px">';
-    html += `<div style="font-size:11px;color:var(--text-dim);margin-bottom:8px;font-weight:600">MESSAGES (${req.messages.length})</div>`;
+    html += '<div style="margin-top:8px">';
+    html += `<div style="font-size:11px;color:var(--text-dim);margin-bottom:5px;font-weight:600">MESSAGES (${req.messages.length})</div>`;
     req.messages.forEach((msg, mi) => {
       if (msg.role === 'user') {
         // Could be a plain user message or tool_results
@@ -631,7 +631,7 @@
               const resultText = typeof c.content === 'string' ? c.content :
                 Array.isArray(c.content) ? c.content.map(b => b.text || '').join('\n') : JSON.stringify(c.content);
               html += `<div class="msg-block msg-tool-result">
-                <div class="msg-role msg-role-tool">tool_result: ${escHtml(c.tool_use_id?.slice(-8) || '')}${cachePill}</div>
+                <div class="msg-role msg-role-tool">tool_result${cachePill}</div>
                 ${renderCappedCode(resultText, `tr-${turn.seq}-${mi}-${ci}`)}
               </div>`;
             } else if (c.type === 'text') {
@@ -663,7 +663,7 @@
             html += `<div class="thinking-block">${escHtml(c.thinking)}</div>`;
           } else if (c.type === 'tool_use') {
             html += `<div class="tool-call-block">
-              <span class="tool-call-name">${escHtml(c.name)}</span>(${escHtml(c.id?.slice(-8) || '')})
+              <span class="tool-call-name">${escHtml(c.name)}</span>
               <div class="tool-call-args">${escHtml(JSON.stringify(c.input, null, 2))}</div>
             </div>`;
           } else if (c.type === 'text') {
@@ -694,7 +694,6 @@
       } else if (block.type === 'toolCall') {
         html += `<div class="tool-call-block" style="margin-bottom:8px">
           <span class="tool-call-name">${escHtml(block.name)}</span>
-          <span style="color:var(--text-dim);font-size:11px">${escHtml(block.id)}</span>
           <div class="tool-call-args">${escHtml(JSON.stringify(block.arguments, null, 2))}</div>
         </div>`;
       } else if (block.type === 'text') {
@@ -705,7 +704,7 @@
     });
 
     // Usage grid
-    html += '<div style="margin-top:16px">';
+    html += '<div style="margin-top:10px">';
     html += '<div class="section-title">Token Usage &amp; Cost</div>';
     html += '<div class="usage-grid">';
     html += `<div class="usage-cell"><div class="val">${fmtNum(usage.input)}</div><div class="label">Input</div></div>`;
