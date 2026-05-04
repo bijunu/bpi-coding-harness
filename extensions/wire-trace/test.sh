@@ -51,15 +51,33 @@ RES_COUNT=$(jq -c 'select(.type=="response")' "$TRACE" | wc -l | tr -d ' ')
     || fail "1.3 request/response counts mismatch" "req=$REQ_COUNT res=$RES_COUNT"
 pass "1.3 request/response paired (req=$REQ_COUNT res=$RES_COUNT)"
 
-# ---- 2. Pairing invariant: every seq has exactly one req and one res -----
+# ---- 2. Pairing & uniqueness invariants --------------------------------
 echo
-echo "2) pairing invariant"
+echo "2) pairing and uniqueness invariants"
 jq -se '
   (group_by(.seq)
    | all(.[]; (map(.type) | sort) == ["request","response"]))
 ' "$TRACE" | grep -qx "true" \
     || fail "2.1 unpaired seq groups" "$(jq -s 'group_by(.seq)' "$TRACE")"
 pass "2.1 every seq has exactly one request and one response"
+
+# Catch the failure mode where the extension is registered twice (e.g.,
+# both project-local AND global), which fires every handler N times and
+# writes duplicate records. Pairing already catches the obvious case, but
+# this gives a clearer signal and also catches partial duplication.
+DUP_LINES=$(sort "$TRACE" | uniq -d | wc -l | tr -d ' ')
+[ "$DUP_LINES" = "0" ] \
+    || fail "2.2 byte-identical duplicate lines in trace" \
+             "$(sort "$TRACE" | uniq -d | head -3)"
+pass "2.2 no byte-identical duplicate records"
+
+DUP_KEYS=$(jq -se '
+  group_by([.seq, .type])
+  | map(select(length > 1) | {seq: .[0].seq, type: .[0].type, count: length})
+' "$TRACE")
+[ "$DUP_KEYS" = "[]" ] \
+    || fail "2.3 multiple records share the same (seq, type) key" "$DUP_KEYS"
+pass "2.3 each (seq, type) pair occurs exactly once"
 
 # ---- 3. Payload + body shape --------------------------------------------
 echo
